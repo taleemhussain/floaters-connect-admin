@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: admin
+    description: Floaters CONNECT administration operations
 paths:
   /healthz:
     get:
@@ -24,7 +26,144 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /v1/admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [admin]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User directory
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+  /v1/admin/users/{uid}/toggle-ban:
+    post:
+      operationId: toggleAdminUserBan
+      tags: [admin]
+      summary: Toggle a user's ban state
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated ban state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserActionResult"
+  /v1/admin/users/{uid}/verify:
+    post:
+      operationId: verifyAdminUser
+      tags: [admin]
+      summary: Verify a user's onboarding
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserActionResult"
+  /v1/admin/disputes:
+    get:
+      operationId: getAdminDisputes
+      tags: [admin]
+      summary: List platform disputes
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dispute queue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Dispute"
+  /v1/admin/disputes/{id}/resolve:
+    post:
+      operationId: resolveAdminDispute
+      tags: [admin]
+      summary: Resolve a platform dispute
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisputeResolutionInput"
+      responses:
+        "200":
+          description: Resolved dispute
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeActionResult"
+  /v1/admin/tags:
+    get:
+      operationId: getAdminTags
+      tags: [admin]
+      summary: List skill tags
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Skill tag registry
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkillTag"
+    post:
+      operationId: upsertAdminTag
+      tags: [admin]
+      summary: Create or update a skill tag
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillTagInput"
+      responses:
+        "200":
+          description: Saved skill tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagActionResult"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +172,102 @@ components:
           type: string
       required:
         - status
+    UserProfile:
+      type: object
+      required: [uid, email, displayName, role, onboardingStatus, isBanned]
+      properties:
+        uid: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        role:
+          type: string
+          enum: [driver, runner, admin, unset]
+        onboardingStatus: { type: string }
+        isBanned: { type: boolean }
+        createdAt:
+          type: ["string", "null"]
+          format: date-time
+    UserActionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        user:
+          anyOf:
+            - $ref: "#/components/schemas/UserProfile"
+            - type: "null"
+        isBanned:
+          type: ["boolean", "null"]
+        onboardingStatus:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+    Dispute:
+      type: object
+      required: [id, gigId, reporterName, reporterRole, accusedName, reason, status, createdAt]
+      properties:
+        id: { type: string }
+        gigId: { type: string }
+        reporterName: { type: string }
+        reporterRole: { type: string }
+        accusedName: { type: string }
+        reason: { type: string }
+        status:
+          type: string
+          enum: [open, resolved]
+        resolution:
+          type: ["string", "null"]
+        createdAt: { type: string, format: date-time }
+        evidenceUrl:
+          type: ["string", "null"]
+    DisputeResolutionInput:
+      type: object
+      required: [resolution]
+      properties:
+        resolution: { type: string, minLength: 1 }
+    DisputeActionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        dispute:
+          anyOf:
+            - $ref: "#/components/schemas/Dispute"
+            - type: "null"
+        id:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        resolution:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+    SkillTag:
+      type: object
+      required: [id, name, description, active]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        active: { type: boolean }
+    SkillTagInput:
+      type: object
+      required: [name, description, active]
+      properties:
+        id:
+          type: ["string", "null"]
+        name: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        active: { type: boolean }
+    TagActionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        tag:
+          anyOf:
+            - $ref: "#/components/schemas/SkillTag"
+            - type: "null"
+        message:
+          type: ["string", "null"]
 
