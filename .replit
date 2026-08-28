@@ -1,5 +1,5 @@
 modules = ["nodejs-24"]
-entrypoint = "pnpm run dev"
+run = "pnpm run dev"
 
 [workflows]
 run-api = { name = "API Server", command = "pnpm --filter @workspace/admin-api run dev" }
