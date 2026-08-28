@@ -1,6 +1,0 @@
-node scripts/seed-admin.js your-custom-email@domain.com your-secure-password
-
-node scripts/seed-admin.js
-
-Email:    admin@floaters.com
-Password: password123
