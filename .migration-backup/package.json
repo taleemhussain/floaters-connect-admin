@@ -1,0 +1,16 @@
+{
+  "name": "floaters-web-admin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r --filter \"./apps/**\" run build",
+    "check": "pnpm run typecheck:libs && pnpm -r --filter \"./apps/**\" run typecheck",
+    "typecheck:libs": "tsc --build",
+    "verify": "pnpm run check && pnpm run build"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "firebase-admin": "^13.6.0"
+  }
+}

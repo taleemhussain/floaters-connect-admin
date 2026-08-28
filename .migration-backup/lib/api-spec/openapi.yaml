@@ -1,0 +1,1217 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.2.0
+  description: |
+    Floaters CONNECT API.
+    Auth: Firebase ID tokens via Authorization Bearer.
+    Firestore is accessed only by Nest Admin SDK — not by mobile clients.
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: countries
+    description: Country and dial-code lookup
+  - name: auth
+    description: Session bootstrap and current user (Firebase ID token)
+  - name: identity
+    description: Pre-auth identity lookup for onboarding
+  - name: drivers
+    description: Driver registration and profile
+  - name: onboarding
+    description: Post-signup onboarding (role selection, profile creation)
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status and whether Firebase Admin is configured
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /v1/countries:
+    get:
+      operationId: listCountries
+      tags: [countries]
+      summary: List countries for region selection
+      description: Returns all countries with ISO code, dial code, and flag emoji. Data sourced from REST Countries (cached server-side).
+      responses:
+        "200":
+          description: Country list sorted alphabetically by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Country"
+        "503":
+          description: Upstream country provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/auth/me:
+    get:
+      operationId: getAuthMe
+      tags: [auth]
+      summary: Current authenticated user
+      description: Returns the user profile for the Firebase UID in the Bearer ID token.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found (call bootstrap / register first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/auth/bootstrap:
+    post:
+      operationId: bootstrapAuth
+      tags: [auth]
+      summary: Upsert user after first Firebase sign-in
+      description: |
+        Creates or refreshes `users/{uid}` from the verified ID token.
+        Optional body fields supplement claims (Nest prefers token claims when present).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthBootstrapRequest"
+      responses:
+        "200":
+          description: User profile upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/auth/app-passcode-configured:
+    post:
+      operationId: markAppPasscodeConfigured
+      tags: [auth]
+      summary: Record that the user completed app passcode setup
+      description: |
+        Sets `appPasscodeConfiguredAt` on `users/{uid}`. The passcode itself is stored on-device only.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/identity/lookup:
+    post:
+      operationId: lookupIdentity
+      tags: [identity]
+      summary: Check whether an account exists for an email or phone
+      description: |
+        Used by driver onboarding identity entry (SCR-ONB-05) to route new vs existing users.
+        Does not create a session. Rate limiting to be added later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityLookupRequest"
+      responses:
+        "200":
+          description: Lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityLookupResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase / Firestore unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/onboarding/confirm-role:
+    post:
+      operationId: confirmOnboardingRole
+      tags: [onboarding]
+      summary: Confirm Driver or Runner role and create role profile
+      description: |
+        Sets `users/{uid}.role` and `onboardingStatus: registered`, then creates
+        `driver_profiles/{uid}` or `runner_profiles/{uid}` with setup selections from SCR-ONB-25/26.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmOnboardingRoleRequest"
+      responses:
+        "200":
+          description: Role confirmed and profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found (call bootstrap first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Role already set to a different value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/register:
+    post:
+      operationId: registerDriver
+      tags: [drivers]
+      summary: Complete driver onboarding registration
+      description: |
+        Persists driver onboarding draft to Firestore for the authenticated Firebase UID.
+        UID is taken from the Bearer token only — never from the body.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriverRegisterRequest"
+      responses:
+        "201":
+          description: Driver registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverRegisterResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Driver already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented yet (Phase 1 stub)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/profile:
+    get:
+      operationId: getDriverProfile
+      tags: [drivers]
+      summary: Driver vehicle profile for 1.3 setup
+      description: Returns vehicle type, plate, year, make/model, and sectors for the authenticated driver.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Driver profile fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverVehicleProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: putDriverProfile
+      tags: [drivers]
+      summary: Upsert driver vehicle profile (1.3 step 02/05)
+      description: |
+        Saves vehicle enrichment fields on driver_profiles/{uid}. Optionally updates
+        displayName/email on users/{uid}. Prefill vehicleType/licensePlate from confirm-role.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutDriverProfileRequest"
+      responses:
+        "200":
+          description: Updated driver profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverVehicleProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/payout:
+    put:
+      operationId: putDriverPayout
+      tags: [drivers]
+      summary: Submit bank payout details (1.3 step 04/05)
+      description: |
+        Stores bank details on payout_profiles/{uid}. Responses never return full
+        account or routing numbers — only last4 and status.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutDriverPayoutRequest"
+      responses:
+        "200":
+          description: Payout status (masked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverDocumentsPayoutInfo"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/documents:
+    get:
+      operationId: getDriverDocuments
+      tags: [drivers]
+      summary: Onboarding document upload status
+      description: Returns profile photo, national ID, and vehicle photo status for the authenticated user.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document slot statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverDocumentsResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found (call bootstrap first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/documents/upload-session:
+    post:
+      operationId: createDriverDocumentUploadSession
+      tags: [drivers]
+      summary: Create a signed upload URL for an onboarding document
+      description: Returns a short-lived signed PUT URL. Mobile uploads bytes directly to Storage, then calls complete.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriverDocumentUploadSessionRequest"
+      responses:
+        "200":
+          description: Signed upload session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverDocumentUploadSessionResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found (call bootstrap first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/documents/complete:
+    post:
+      operationId: completeDriverDocumentUpload
+      tags: [drivers]
+      summary: Finalize an onboarding document upload
+      description: Verifies the Storage object exists and persists metadata on users/{uid}.onboardingDocuments.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriverDocumentCompleteRequest"
+      responses:
+        "200":
+          description: Updated document statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverDocumentsResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User or storage object not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/documents/role-setup-complete:
+    post:
+      operationId: markDriverRoleSetupComplete
+      tags: [drivers]
+      summary: Record that the Document Hub extra setup step is done
+      description: |
+        Sets `roleSetupComplete` on `users/{uid}`. Drivers must finish 1.3 vehicle profile,
+        required credential uploads, and payout before this succeeds (422 otherwise).
+        Runners call after returning from 1.5 Profile Hub.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Updated document statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverDocumentsResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Driver 1.3 required steps are not finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/drivers/documents/hub-complete:
+    post:
+      operationId: markDriverDocumentHubComplete
+      tags: [drivers]
+      summary: Mark the Document Hub finished after Done and continue
+      description: |
+        Sets `documentsComplete` on `users/{uid}` only when profile photo, national ID,
+        and the role extra step (`roleSetupComplete`) are done. Resume then skips
+        Document Hub for this user. Idempotent if already complete.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile with documentsComplete true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserProfile"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Required Document Hub steps are not finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Firebase Admin not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID token from the mobile Auth SDK
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        firebaseConfigured:
+          type: boolean
+          description: Whether Firebase Admin env vars are present
+      required:
+        - status
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code (e.g. AUTH_UNAUTHORIZED, VALIDATION_ERROR)
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional field-level or contextual details
+    Country:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ISO 3166-1 alpha-2 code
+        name:
+          type: string
+          description: Common country name
+        dialCode:
+          type: string
+          description: International dial code with leading +
+        flag:
+          type: string
+          description: Flag emoji
+      required:
+        - id
+        - name
+        - dialCode
+        - flag
+    IdentifierType:
+      type: string
+      enum: [email, phone]
+    AuthMethod:
+      type: string
+      enum: [manual, google, apple]
+    UserRole:
+      type: string
+      enum: [driver, runner, unset]
+    OnboardingStatus:
+      type: string
+      enum: [draft, registered, verified]
+    FormalAgreement:
+      type: object
+      required: [terms, privacy, ageConfirmed]
+      properties:
+        terms:
+          type: boolean
+        privacy:
+          type: boolean
+        ageConfirmed:
+          type: boolean
+    AuthUserProfile:
+      type: object
+      required:
+        - uid
+        - emailVerified
+        - role
+        - onboardingStatus
+        - legalConsentAcknowledged
+        - dataReviewConfirmed
+        - termsAccepted
+        - privacyAccepted
+        - formalAgreement
+        - documentsComplete
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          description: Firebase Auth UID
+        email:
+          type: string
+          nullable: true
+        phoneNumber:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+          nullable: true
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        countryId:
+          type: string
+          nullable: true
+        countryName:
+          type: string
+          nullable: true
+        countryDialCode:
+          type: string
+          nullable: true
+        identifier:
+          type: string
+          nullable: true
+        identifierType:
+          allOf:
+            - $ref: "#/components/schemas/IdentifierType"
+          nullable: true
+        emailVerified:
+          type: boolean
+        role:
+          $ref: "#/components/schemas/UserRole"
+        onboardingStatus:
+          $ref: "#/components/schemas/OnboardingStatus"
+        legalConsentAcknowledged:
+          type: boolean
+        dataReviewConfirmed:
+          type: boolean
+        termsAccepted:
+          type: boolean
+        privacyAccepted:
+          type: boolean
+        formalAgreement:
+          $ref: "#/components/schemas/FormalAgreement"
+        documentsComplete:
+          type: boolean
+          description: True only after the user finishes every required Document Hub step and taps Done and continue
+        appPasscodeConfiguredAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AuthBootstrapRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: Optional display name when not present on the ID token
+        photoURL:
+          type: string
+          description: Optional photo URL when not present on the ID token
+        firstName:
+          type: string
+        lastName:
+          type: string
+        identifier:
+          type: string
+          nullable: true
+        identifierType:
+          allOf:
+            - $ref: "#/components/schemas/IdentifierType"
+          nullable: true
+        phoneNumber:
+          type: string
+          nullable: true
+        countryId:
+          type: string
+          nullable: true
+        countryName:
+          type: string
+          nullable: true
+        countryDialCode:
+          type: string
+          nullable: true
+        legalConsentAcknowledged:
+          type: boolean
+        legalConsentAcknowledgedAt:
+          type: string
+          format: date-time
+          nullable: true
+        dataReviewConfirmed:
+          type: boolean
+        dataReviewConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        termsAccepted:
+          type: boolean
+        termsAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        privacyAccepted:
+          type: boolean
+        privacyAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        formalAgreement:
+          allOf:
+            - $ref: "#/components/schemas/FormalAgreement"
+          nullable: true
+        formalAgreementAt:
+          type: string
+          format: date-time
+          nullable: true
+      example:
+        displayName: Alex Jordan
+        firstName: Alex
+        lastName: Jordan
+    IdentityLookupRequest:
+      type: object
+      required: [identifier, identifierType]
+      properties:
+        identifier:
+          type: string
+          description: Normalized email or phone string
+        identifierType:
+          $ref: "#/components/schemas/IdentifierType"
+      example:
+        identifier: test@example.com
+        identifierType: email
+    IdentityLookupResponse:
+      type: object
+      required: [exists]
+      properties:
+        exists:
+          type: boolean
+        displayIdentifier:
+          type: string
+          description: Safe display form of the identifier when exists is true
+    ConfirmRoleVehicleType:
+      type: string
+      enum: [Van, Sedan, Truck]
+    DriverRoleSetup:
+      type: object
+      required: [vehicleType]
+      properties:
+        vehicleType:
+          $ref: "#/components/schemas/ConfirmRoleVehicleType"
+        licensePlate:
+          type: string
+          nullable: true
+    RunnerRoleSetup:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    ConfirmOnboardingRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [driver, runner]
+        driverSetup:
+          $ref: "#/components/schemas/DriverRoleSetup"
+        runnerSetup:
+          $ref: "#/components/schemas/RunnerRoleSetup"
+    DriverRegisterRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - phoneNumber
+        - countryId
+        - countryName
+        - countryDialCode
+        - phoneVerified
+        - legalConsentAcknowledged
+        - dataReviewConfirmed
+        - termsAccepted
+        - privacyAccepted
+        - formalAgreement
+      properties:
+        identifier:
+          type: string
+          nullable: true
+        identifierType:
+          allOf:
+            - $ref: "#/components/schemas/IdentifierType"
+          nullable: true
+        authMethod:
+          allOf:
+            - $ref: "#/components/schemas/AuthMethod"
+          nullable: true
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
+          description: National or E.164 phone number collected during onboarding
+        countryId:
+          type: string
+          description: ISO 3166-1 alpha-2
+        countryName:
+          type: string
+        countryDialCode:
+          type: string
+        phoneVerified:
+          type: boolean
+        legalConsentAcknowledged:
+          type: boolean
+        legalConsentAcknowledgedAt:
+          type: string
+          format: date-time
+          nullable: true
+        dataReviewConfirmed:
+          type: boolean
+        dataReviewConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        termsAccepted:
+          type: boolean
+        termsAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        privacyAccepted:
+          type: boolean
+        privacyAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        formalAgreement:
+          $ref: "#/components/schemas/FormalAgreement"
+        formalAgreementAt:
+          type: string
+          format: date-time
+          nullable: true
+      example:
+        firstName: Alex
+        lastName: Jordan
+        phoneNumber: "+15551234567"
+        countryId: US
+        countryName: United States
+        countryDialCode: "+1"
+        phoneVerified: true
+        authMethod: google
+        legalConsentAcknowledged: true
+        dataReviewConfirmed: true
+        termsAccepted: true
+        privacyAccepted: true
+        formalAgreement:
+          terms: true
+          privacy: true
+          ageConfirmed: true
+    DriverRegisterResponse:
+      type: object
+      required: [accountId, profile]
+      properties:
+        accountId:
+          type: string
+          description: Same as Firebase UID for the registered driver
+        profile:
+          $ref: "#/components/schemas/AuthUserProfile"
+    DriverDocumentType:
+      type: string
+      enum:
+        - profile_photo
+        - national_id
+        - vehicle_photo
+        - drivers_license_front
+        - drivers_license_back
+        - vehicle_registration
+        - vehicle_insurance
+        - operator_credentials
+        - fleet_coverage
+        - runner_identity
+      description: >
+        Onboarding / Document Hub docs (profile, ID, vehicle, license, registration, insurance)
+        and Runner Profile Hub docs (operator_credentials, fleet_coverage, runner_identity)
+        persisted on runner_profiles.
+    DriverDocumentStatus:
+      type: string
+      enum: [missing, uploaded, verified]
+    DriverDocumentSlot:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/DriverDocumentStatus"
+        uploadedAt:
+          type: string
+          format: date-time
+          nullable: true
+        previewUrl:
+          type: string
+          nullable: true
+          description: Short-lived signed download URL when status is uploaded or verified
+    DriverDocumentsPayoutInfo:
+      type: object
+      required: [locked, status]
+      properties:
+        locked:
+          type: boolean
+          description: Document Hub payout card lock (UI); setup may still be submitted via 1.3
+        status:
+          type: string
+          enum: [missing, submitted]
+        accountHolderName:
+          type: string
+          nullable: true
+        bankName:
+          type: string
+          nullable: true
+        accountLast4:
+          type: string
+          nullable: true
+        routingLast4:
+          type: string
+          nullable: true
+    DriverDocumentsResponse:
+      type: object
+      required:
+        - profilePhoto
+        - nationalId
+        - vehiclePhoto
+        - driversLicenseFront
+        - driversLicenseBack
+        - vehicleRegistration
+        - vehicleInsurance
+        - operatorCredentials
+        - fleetCoverage
+        - runnerIdentity
+        - payoutInfo
+        - roleSetupComplete
+      properties:
+        profilePhoto:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        nationalId:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        vehiclePhoto:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        driversLicenseFront:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        driversLicenseBack:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        vehicleRegistration:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        vehicleInsurance:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+        operatorCredentials:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+          description: Runner Profile Hub — Operator Credentials (SCR-PROF-01)
+        fleetCoverage:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+          description: Runner Profile Hub — Fleet Coverage (SCR-PROF-01)
+        runnerIdentity:
+          $ref: "#/components/schemas/DriverDocumentSlot"
+          description: Runner Profile Hub — Runner Identity portrait (SCR-PROF-04)
+        payoutInfo:
+          $ref: "#/components/schemas/DriverDocumentsPayoutInfo"
+        roleSetupComplete:
+          type: boolean
+          description: True when the role extra hub step is done (driver 1.3 vehicle setup or runner 1.5 Profile Hub)
+    DriverVehicleType:
+      type: string
+      enum: [Van, Sedan, Truck]
+    DriverSector:
+      type: string
+      enum: [food, grocery, logistics, convenience]
+    DriverVehicleProfile:
+      type: object
+      required: [vehicleType, licensePlate, vehicleYear, vehicleMakeModel, sectors, displayName, email]
+      properties:
+        vehicleType:
+          $ref: "#/components/schemas/DriverVehicleType"
+          nullable: true
+        licensePlate:
+          type: string
+          nullable: true
+        vehicleYear:
+          type: string
+          nullable: true
+        vehicleMakeModel:
+          type: string
+          nullable: true
+        sectors:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriverSector"
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+    PutDriverProfileRequest:
+      type: object
+      required: [vehicleType, vehicleYear, vehicleMakeModel, sectors]
+      properties:
+        vehicleType:
+          $ref: "#/components/schemas/DriverVehicleType"
+        licensePlate:
+          type: string
+          nullable: true
+        vehicleYear:
+          type: string
+          minLength: 4
+          maxLength: 4
+        vehicleMakeModel:
+          type: string
+          minLength: 1
+        sectors:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/DriverSector"
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+    PutDriverPayoutRequest:
+      type: object
+      required: [accountHolderName, bankName, accountNumber, routingNumber]
+      properties:
+        accountHolderName:
+          type: string
+          minLength: 1
+        bankName:
+          type: string
+          minLength: 1
+        accountNumber:
+          type: string
+          minLength: 4
+        routingNumber:
+          type: string
+          minLength: 4
+    DriverDocumentUploadSessionRequest:
+      type: object
+      required: [documentType, contentType]
+      properties:
+        documentType:
+          $ref: "#/components/schemas/DriverDocumentType"
+        contentType:
+          type: string
+          description: MIME type of the image to upload
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+    DriverDocumentUploadSessionResponse:
+      type: object
+      required: [uploadUrl, storagePath, expiresAt]
+      properties:
+        uploadUrl:
+          type: string
+          description: Signed PUT URL for direct upload to Firebase Storage
+        storagePath:
+          type: string
+          description: Object path within the bucket; pass to complete endpoint
+        expiresAt:
+          type: string
+          format: date-time
+    DriverDocumentCompleteRequest:
+      type: object
+      required: [documentType, storagePath]
+      properties:
+        documentType:
+          $ref: "#/components/schemas/DriverDocumentType"
+        storagePath:
+          type: string

@@ -1,6 +1,20 @@
 modules = ["nodejs-24"]
-run = "pnpm run dev"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
 
 [workflows]
-run-api = { name = "API Server", command = "pnpm --filter @workspace/admin-api run dev" }
-run-web = { name = "Web App", command = "pnpm --filter @workspace/admin-web run dev" }
+runButton = "Project"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000

@@ -1,0 +1,9 @@
+modules = ["nodejs-20", "web", "nix"]
+run = "pnpm run dev"
+
+[workflows]
+run-api = { name = "API Server", command = "pnpm --filter @workspace/admin-api run dev" }
+run-web = { name = "Web App", command = "pnpm --filter @workspace/admin-web run dev" }
+
+[nix]
+channel = "stable-25_05"
