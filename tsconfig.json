@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@workspace/firebase": ["lib/firebase/src"],
+      "@workspace/api-zod": ["lib/api-zod/src"]
+    },
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  },
+  "references": [
+    { "path": "lib/firebase" },
+    { "path": "lib/api-zod" }
+  ]
+}
