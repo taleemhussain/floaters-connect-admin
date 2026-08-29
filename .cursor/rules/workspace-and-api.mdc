@@ -1,0 +1,27 @@
+---
+description: pnpm workspace, NestJS API server, and Firebase conventions for floaters-web-admin
+globs: "{artifacts/api-server/**,lib/**,scripts/**}"
+alwaysApply: false
+---
+
+# Workspace & API
+
+## Monorepo
+
+- Package manager: **pnpm** workspaces (`artifacts/*`, `lib/*`, `scripts`)
+- On Windows: `pnpm install --ignore-scripts` (root preinstall needs Unix `sh`)
+- Typecheck: `pnpm run typecheck` · Build: `pnpm run build`
+
+## API stack
+
+- **NestJS** (`artifacts/api-server`) — global prefix `/api`; all admin routes at `/api/v1/admin/`
+- **Firebase Firestore** via `lib/firebase` (Admin SDK; returns empty arrays if unconfigured)
+- **Auth guard:** `FirebaseAuthGuard` + `AdminRoleGuard` — both must be present on admin controller
+- **No PostgreSQL / Drizzle** — Firestore is the only data store
+
+## Alignment with admin-web
+
+- Admin-web fetches from `api-server` using `fetch()` with Bearer token
+- API returns raw Firestore document shapes (no transformation layer)
+- `FirestoreCollections` constants from `@workspace/firebase` must be used — no hardcoded string collection names
+- After API changes: run `pnpm --filter @workspace/api-server run typecheck` to verify

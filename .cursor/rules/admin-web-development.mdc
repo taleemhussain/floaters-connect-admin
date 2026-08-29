@@ -1,0 +1,40 @@
+---
+description: Admin web app rules — Next.js, Shadcn/ui, Tailwind CSS tokens, Firebase, and safe page edits
+globs: artifacts/admin-web/**
+alwaysApply: false
+---
+
+# Admin web development (`artifacts/admin-web`)
+
+## Stack (from admin-web-stack.md)
+
+- Next.js 15 App Router + TypeScript
+- Shadcn/ui components (`src/components/ui/`) — reuse before creating
+- Tailwind CSS with CSS variable tokens — never hardcode hex colors
+- `next-themes` — `defaultTheme="light"`, `enableSystem={false}`
+- Firebase Auth for login (Google Sign-In), token sent as Bearer to API
+- All data via `fetch()` to `/api/v1/admin/*` — never query Firestore from the browser
+
+## Page changes — mandatory workflow
+
+1. Read `.agents/skills/page-edit-safety/SKILL.md` before touching any page file.
+2. Confirm the exact file path with the user before editing.
+3. Edit **one file only** per confirmation. Layout, CSS, and shared components need separate approval.
+
+## Firestore integration
+
+- Read `.agents/skills/firestore-integration/SKILL.md` before adding new queries or endpoints.
+- No mock fallback arrays — empty Firestore = empty UI state.
+
+## Build gates
+
+After every change, run:
+```bash
+pnpm --filter @workspace/admin-web run typecheck
+pnpm --filter @workspace/admin-web run lint
+```
+Both must exit with code 0 before reporting done.
+
+## Product context
+
+Driver vs Runner roles, payment model, and admin responsibilities: `.agents/memory/floaters-connect-overview.md`

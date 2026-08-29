@@ -1,1 +1,6 @@
 - [Fresh artifact builds](fresh-artifact-builds.md) — Production builds cannot rely on ignored dist output; build runtime workspace dependencies explicitly.
+- [Agent playbook](../../AGENTS.md) — shared Cursor + Antigravity instructions; skills index and alignment rules.
+- [Admin web stack](admin-web-stack.md) — Next.js 15, Shadcn/ui, Tailwind CSS variable tokens, next-themes, Firebase conventions for the admin panel.
+- [Floaters CONNECT overview](floaters-connect-overview.md) — full app scope, roles, payment model, workflow, and product context for the admin platform.
+- [Firebase API conventions](firebase-api-conventions.md) — Bearer Auth, Firestore Admin SDK, collection names, endpoint contracts, env vars.
+- [Cursor rules](../../.cursor/rules/) — `.mdc` rules that mirror this memory and skills for local Cursor sessions.
