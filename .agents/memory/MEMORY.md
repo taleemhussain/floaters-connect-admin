@@ -1,0 +1,1 @@
+- [Fresh artifact builds](fresh-artifact-builds.md) — Production builds cannot rely on ignored dist output; build runtime workspace dependencies explicitly.
