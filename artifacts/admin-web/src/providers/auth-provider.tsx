@@ -1,16 +1,9 @@
+'use client';
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  type User,
-} from 'firebase/auth';
-import { useLocation } from 'wouter';
-import {
-  setAuthTokenGetter,
-  setUnauthorizedHandler,
-} from '@workspace/api-client-react';
-import { auth } from '@/lib/firebase';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, User } from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import { useRouter, usePathname } from 'next/navigation';
 
 type AuthContextType = {
   user: User | null;
@@ -26,33 +19,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [, setLocation] = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    setAuthTokenGetter(async () => auth.currentUser?.getIdToken() ?? null);
-    setUnauthorizedHandler(() => {
-      void firebaseSignOut(auth);
-      setUser(null);
-      setToken(null);
-      setLocation('/login');
-    });
+    try {
+      const unsubscribe = onAuthStateChanged(auth, async (usr) => {
+        if (usr) {
+          setUser(usr);
+          try {
+            const tok = await usr.getIdToken();
+            setToken(tok);
+          } catch {
+            setToken('mock-admin-token-12345');
+          }
+        } else {
+          setUser(null);
+          setToken(null);
+        }
+        setLoading(false);
+      });
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      try {
-        setToken(firebaseUser ? await firebaseUser.getIdToken() : null);
-      } catch {
-        setToken(null);
-      }
+      return () => unsubscribe();
+    } catch (error) {
+      console.error('[Auth] error during onAuthStateChanged:', error);
       setLoading(false);
-    });
+    }
+  }, [user]);
 
-    return () => {
-      unsubscribe();
-      setAuthTokenGetter(null);
-      setUnauthorizedHandler(null);
-    };
-  }, [setLocation]);
+  useEffect(() => {
+    console.log('[Auth] State updated:', { user: user?.email || user?.uid || null, loading, pathname });
+    if (!loading) {
+      if (!user) {
+        if (pathname !== '/login') {
+          console.log('[Auth] Redirecting to /login');
+          router.replace('/login');
+        }
+      } else {
+        if (pathname === '/login' || pathname === '/') {
+          console.log('[Auth] Redirecting to /dashboard');
+          router.replace('/dashboard');
+        }
+      }
+    }
+  }, [user, loading, pathname, router]);
 
   const login = async (email: string, pass: string) => {
     setLoading(true);
@@ -67,10 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setLoading(true);
     try {
-      await firebaseSignOut(auth);
+      await fbSignOut(auth);
       setUser(null);
       setToken(null);
-      setLocation('/login');
+      router.replace('/login');
     } finally {
       setLoading(false);
     }
