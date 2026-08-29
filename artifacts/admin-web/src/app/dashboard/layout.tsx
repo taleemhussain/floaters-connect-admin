@@ -2,13 +2,11 @@
 
 import React from 'react';
 import { useAuth } from '@/providers/auth-provider';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard,
   Users,
-  AlertTriangle,
-  Tags,
   LogOut,
   ShieldCheck,
   Loader2,
@@ -45,7 +43,6 @@ import { ThemeToggle } from '@/components/theme-toggle';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
 
   if (loading) {
     return (
@@ -66,15 +63,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const menuItems = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'User Directory', href: '/dashboard/users', icon: Users },
-    { name: 'Disputes Hub', href: '/dashboard/disputes', icon: AlertTriangle },
-    { name: 'Match Tags', href: '/dashboard/tags', icon: Tags },
   ];
 
   const getBreadcrumb = () => {
     if (pathname === '/dashboard') return 'Overview';
     if (pathname === '/dashboard/users') return 'User Directory';
-    if (pathname === '/dashboard/disputes') return 'Disputes Hub';
-    if (pathname === '/dashboard/tags') return 'Match Tags';
     return 'Dashboard';
   };
 

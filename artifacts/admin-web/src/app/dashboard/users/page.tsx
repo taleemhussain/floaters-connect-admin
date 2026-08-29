@@ -2,13 +2,20 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/providers/auth-provider';
-import { UserCheck, ShieldAlert, Ban, Search, Filter, RefreshCw } from 'lucide-react';
+import { UserCheck, ShieldAlert, Ban, Search, Filter, RefreshCw, Eye, Loader2 } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 type UserProfile = {
   uid: string;
   email: string;
   displayName: string;
-  role: 'driver' | 'runner';
+  role: 'driver' | 'runner' | 'admin' | 'unset';
   onboardingStatus: string;
   isBanned: boolean;
   createdAt?: string;
@@ -21,6 +28,12 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'driver' | 'runner'>('all');
   const [error, setError] = useState<string | null>(null);
+
+  // Profile Sheet state
+  const [selectedUserUid, setSelectedUserUid] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const fetchUsers = async () => {
     if (!token) return;
@@ -44,6 +57,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const handleToggleBan = async (uid: string) => {
@@ -55,6 +69,10 @@ export default function UsersPage() {
       });
       if (res.ok) {
         fetchUsers();
+        // If sheet is open and banned user matches, update the profile sheet too
+        if (isProfileOpen && selectedUserUid === uid) {
+          viewProfile(uid);
+        }
       } else {
         const err = await res.json();
         alert(err.message || 'Failed to update ban state.');
@@ -74,6 +92,9 @@ export default function UsersPage() {
       });
       if (res.ok) {
         fetchUsers();
+        if (isProfileOpen && selectedUserUid === uid) {
+          viewProfile(uid);
+        }
       } else {
         const err = await res.json();
         alert(err.message || 'Failed to verify user.');
@@ -81,6 +102,28 @@ export default function UsersPage() {
     } catch (err) {
       console.error(err);
       alert('Error verifying user.');
+    }
+  };
+
+  const viewProfile = async (uid: string) => {
+    setSelectedUserUid(uid);
+    setIsProfileOpen(true);
+    setLoadingProfile(true);
+    setSelectedProfile(null);
+    try {
+      const res = await fetch(`/api/v1/admin/users/${uid}/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedProfile(data);
+      } else {
+        console.error('Failed to retrieve profile data');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingProfile(false);
     }
   };
 
@@ -105,7 +148,7 @@ export default function UsersPage() {
         </div>
         <button
           onClick={fetchUsers}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Reload Directory"
         >
           <RefreshCw className="h-4 w-4" />
@@ -130,7 +173,7 @@ export default function UsersPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as any)}
-            className="bg-background border border-border rounded-lg text-xs text-foreground py-2 px-3 focus:outline-none focus:border-border transition-colors"
+            className="bg-background border border-border rounded-lg text-xs text-foreground py-2 px-3 focus:outline-none focus:border-border transition-colors cursor-pointer"
           >
             <option value="all">All Roles</option>
             <option value="driver">Drivers Only</option>
@@ -172,10 +215,14 @@ export default function UsersPage() {
                       <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{user.email}</div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide uppercase ${
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase border ${
                         user.role === 'driver'
-                          ? 'bg-blue-950/30 text-blue-400 border border-blue-900/20'
-                          : 'bg-muted text-muted-foreground border border-border'
+                          ? 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                          : user.role === 'runner'
+                          ? 'bg-indigo-100 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20'
+                          : user.role === 'admin'
+                          ? 'bg-amber-100 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
+                          : 'bg-slate-100 dark:bg-muted/50 text-slate-800 dark:text-muted-foreground border-slate-200 dark:border-border'
                       }`}>
                         {user.role}
                       </span>
@@ -186,17 +233,24 @@ export default function UsersPage() {
                     <td className="px-5 py-3.5">
                       <div>
                         {user.isBanned ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-red-950/40 text-red-400 border border-red-900/30">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/20">
                             Banned
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-900/30">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">
                             Active
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-right space-x-1.5">
+                      <button
+                        onClick={() => viewProfile(user.uid)}
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-all shadow-sm cursor-pointer"
+                        title="View Firestore Profile"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
                       {user.onboardingStatus !== 'registered' && (
                         <button
                           onClick={() => handleVerify(user.uid)}
@@ -225,6 +279,203 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {/* Profile Detail Slide-out Sheet */}
+      <Sheet open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+        <SheetContent className="sm:max-w-md overflow-y-auto bg-card border-l border-border text-foreground">
+          <SheetHeader className="space-y-1.5 pb-4 border-b border-border/60">
+            <SheetTitle className="text-base font-bold text-foreground">Operator Profile</SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground">
+              Live Firestore metadata records for this account
+            </SheetDescription>
+          </SheetHeader>
+
+          {loadingProfile ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="text-xs text-muted-foreground font-medium">Fetching details from Firestore...</span>
+            </div>
+          ) : !selectedProfile || !selectedProfile.user ? (
+            <div className="py-8 text-center text-xs text-muted-foreground font-medium">
+              Failed to load profile record.
+            </div>
+          ) : (
+            <div className="space-y-6 py-5">
+              {/* Profile Card Header */}
+              <div className="flex items-center space-x-3.5">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
+                  {selectedProfile.user.displayName ? selectedProfile.user.displayName.slice(0, 2).toUpperCase() : 'FC'}
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-foreground">{selectedProfile.user.displayName || 'Unnamed User'}</h4>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate max-w-[260px]">{selectedProfile.user.email}</p>
+                </div>
+              </div>
+
+              {/* Status Section */}
+              <div className="bg-background rounded-xl p-4 border border-border/80 space-y-2.5">
+                <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Account Credentials</h5>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground text-[10px]">Onboarding Status</span>
+                    <p className="font-semibold text-foreground font-mono text-[11px] mt-0.5 capitalize">
+                      {selectedProfile.user.onboardingStatus}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-[10px]">Account Lock Status</span>
+                    <p className="font-semibold mt-0.5">
+                      {selectedProfile.user.isBanned ? (
+                        <span className="text-red-500 font-semibold font-mono text-[11px]">BANNED / RESTRICTED</span>
+                      ) : (
+                        <span className="text-emerald-500 font-semibold font-mono text-[11px]">ACTIVE / UNLOCKED</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground text-[10px]">Firestore Document ID (UID)</span>
+                    <p className="font-mono text-[10px] text-foreground bg-card/60 px-2 py-1 rounded border border-border/30 mt-0.5 break-all select-all">
+                      {selectedProfile.user.uid}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Profiles Section */}
+              {selectedProfile.user.role === 'driver' && (
+                <div className="space-y-4">
+                  <div className="bg-background rounded-xl p-4 border border-border/80 space-y-3">
+                    <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Driver Profile Info</h5>
+                    {selectedProfile.profile ? (
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-muted-foreground text-[10px]">Phone Number</span>
+                          <p className="font-semibold text-foreground font-mono mt-0.5">
+                            {selectedProfile.profile.phoneNumber || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-[10px]">License Plate</span>
+                          <p className="font-semibold text-foreground font-mono mt-0.5">
+                            {selectedProfile.profile.licensePlate || 'N/A'}
+                          </p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground text-[10px]">Vehicle Description</span>
+                          <p className="font-medium text-foreground mt-0.5 capitalize">
+                            {[
+                              selectedProfile.profile.vehicleYear,
+                              selectedProfile.profile.vehicleColor,
+                              selectedProfile.profile.vehicleMakeModel
+                            ].filter(Boolean).join(' ') || 'N/A'}
+                          </p>
+                        </div>
+                        {selectedProfile.profile.sectors && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground text-[10px]">Registered Sectors</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {selectedProfile.profile.sectors.map((s: string) => (
+                                <span key={s} className="px-1.5 py-0.5 bg-card border border-border text-[9px] font-mono rounded capitalize">
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">No matching driver_profiles Firestore document found.</p>
+                    )}
+                  </div>
+
+                  {/* Documents Checklist */}
+                  {selectedProfile.profile?.vehiclePhoto && (
+                    <div className="bg-background rounded-xl p-4 border border-border/80 space-y-2">
+                      <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Document Checklist</h5>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between bg-card/60 p-2 rounded border border-border/30">
+                          <span className="text-muted-foreground">Vehicle Photo Status</span>
+                          <span className="font-semibold text-[10px] text-primary capitalize">
+                            {selectedProfile.profile.vehiclePhoto.status || 'uploaded'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedProfile.user.role === 'runner' && (
+                <div className="space-y-4">
+                  <div className="bg-background rounded-xl p-4 border border-border/80 space-y-3">
+                    <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Runner Profile Info</h5>
+                    {selectedProfile.profile ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="text-muted-foreground text-[10px]">Phone Number</span>
+                            <p className="font-semibold text-foreground font-mono mt-0.5">
+                              {selectedProfile.profile.phoneNumber || 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-[10px]">Registration Dial Code</span>
+                            <p className="font-semibold text-foreground font-mono mt-0.5">
+                              {selectedProfile.profile.countryDialCode || 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+                        {selectedProfile.profile.skills && (
+                          <div>
+                            <span className="text-muted-foreground text-[10px]">Skills & Qualifications</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {selectedProfile.profile.skills.map((s: string) => (
+                                <span key={s} className="px-1.5 py-0.5 bg-card border border-border text-[9px] font-mono rounded">
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">No matching runner_profiles Firestore document found.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Unset Profile info */}
+              {selectedProfile.user.role !== 'driver' && selectedProfile.user.role !== 'runner' && (
+                <div className="bg-background rounded-xl p-4 border border-border/80 text-center py-6">
+                  <p className="text-xs text-muted-foreground italic">This user does not have a Driver or Runner role assigned.</p>
+                </div>
+              )}
+
+              {/* Agreements Verification */}
+              {selectedProfile.profile && (
+                <div className="bg-background rounded-xl p-4 border border-border/80 space-y-2.5">
+                  <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Agreements Status</h5>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-card/50 p-2 rounded border border-border/20 flex flex-col justify-between">
+                      <span className="text-muted-foreground text-[10px]">Terms accepted</span>
+                      <p className="font-bold text-foreground text-[10px] mt-1">
+                        {selectedProfile.profile.termsAccepted ? '✅ ACCEPTED' : '❌ PENDING'}
+                      </p>
+                    </div>
+                    <div className="bg-card/50 p-2 rounded border border-border/20 flex flex-col justify-between">
+                      <span className="text-muted-foreground text-[10px]">Privacy policy</span>
+                      <p className="font-bold text-foreground text-[10px] mt-1">
+                        {selectedProfile.profile.privacyAccepted ? '✅ ACCEPTED' : '❌ PENDING'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

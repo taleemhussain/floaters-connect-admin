@@ -23,6 +23,11 @@ export class AdminController {
     return this.adminService.verifyUser(uid);
   }
 
+  @Get('users/:uid/profile')
+  async getUserProfile(@Param('uid') uid: string) {
+    return this.adminService.getUserProfile(uid);
+  }
+
   @Get('disputes')
   async getDisputes() {
     return this.adminService.getDisputes();

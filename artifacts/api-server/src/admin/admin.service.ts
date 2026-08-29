@@ -6,26 +6,6 @@ import { FirestoreCollections } from '@workspace/firebase';
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
-  // In-memory mock database for fallback testing when Firebase is unconfigured
-  private mockUsers = [
-    { uid: 'u1', email: 'driver1@floaters.com', displayName: 'Marcus Vance', role: 'driver', onboardingStatus: 'registered', isBanned: false, createdAt: new Date().toISOString() },
-    { uid: 'u2', email: 'runner1@floaters.com', displayName: 'Elena Rostova', role: 'runner', onboardingStatus: 'registered', isBanned: false, createdAt: new Date().toISOString() },
-    { uid: 'u3', email: 'driver2@floaters.com', displayName: 'Sarah Chen', role: 'driver', onboardingStatus: 'documents_uploaded', isBanned: false, createdAt: new Date().toISOString() },
-    { uid: 'u4', email: 'runner2@floaters.com', displayName: 'John Doe', role: 'runner', onboardingStatus: 'registered', isBanned: true, createdAt: new Date().toISOString() }
-  ];
-
-  private mockDisputes = [
-    { id: 'disp1', gigId: 'gig101', reporterName: 'Marcus Vance', reporterRole: 'driver', accusedName: 'Elena Rostova', reason: 'Runner failed to deliver the final parcel to the doorstep.', status: 'open', createdAt: new Date().toISOString(), evidenceUrl: 'https://images.unsplash.com/photo-1595246140625-573b715d11dc' },
-    { id: 'disp2', gigId: 'gig102', reporterName: 'Elena Rostova', reporterRole: 'runner', accusedName: 'Marcus Vance', reason: 'Driver cancelled the ride post-OTP confirmation without explaining.', status: 'resolved', resolution: 'Runner compensated $10 penalty charge', createdAt: new Date().toISOString(), evidenceUrl: '' }
-  ];
-
-  private mockTags = [
-    { id: 'tag1', name: 'Heavy Lifting', description: 'Assisting with large furniture, appliances or deliveries exceeding 20kg', active: true },
-    { id: 'tag2', name: 'Grocery Sorting', description: 'Navigating aisles and selecting item replacements with extreme accuracy', active: true },
-    { id: 'tag3', name: 'Express Sprint', description: 'On-foot runners optimized for immediate quick delivery tasks under 15 mins', active: true },
-    { id: 'tag4', name: 'Fragile Handling', description: 'Handling delicate items (e.g. cakes, glassware, catering packages)', active: false }
-  ];
-
   constructor(
     @Inject(FIREBASE_CONFIGURED) private readonly firebaseConfigured: boolean,
     @Inject(FIRESTORE) private readonly firestore: any,
@@ -33,8 +13,8 @@ export class AdminService {
 
   async getUsers() {
     if (!this.firebaseConfigured) {
-      this.logger.log('Firebase unconfigured - returning mock users');
-      return this.mockUsers;
+      this.logger.log('Firebase is not configured - returning empty users');
+      return [];
     }
 
     try {
@@ -43,21 +23,16 @@ export class AdminService {
       snap.forEach((doc: any) => {
         users.push({ uid: doc.id, ...doc.data() });
       });
-      return users.length > 0 ? users : this.mockUsers;
+      return users;
     } catch (error: any) {
       this.logger.error(`Error fetching Firestore users: ${error.message}`);
-      return this.mockUsers;
+      return [];
     }
   }
 
   async toggleUserBan(uid: string) {
     if (!this.firebaseConfigured) {
-      const user = this.mockUsers.find(u => u.uid === uid);
-      if (user) {
-        user.isBanned = !user.isBanned;
-        return { success: true, user };
-      }
-      return { success: false, message: 'User not found' };
+      return { success: false, message: 'Firebase not configured' };
     }
 
     try {
@@ -78,12 +53,7 @@ export class AdminService {
 
   async verifyUser(uid: string) {
     if (!this.firebaseConfigured) {
-      const user = this.mockUsers.find(u => u.uid === uid);
-      if (user) {
-        user.onboardingStatus = 'registered';
-        return { success: true, user };
-      }
-      return { success: false, message: 'User not found' };
+      return { success: false, message: 'Firebase not configured' };
     }
 
     try {
@@ -96,9 +66,41 @@ export class AdminService {
     }
   }
 
+  async getUserProfile(uid: string) {
+    if (!this.firebaseConfigured) {
+      return { success: false, message: 'Firebase not configured' };
+    }
+
+    try {
+      const userSnap = await this.firestore.collection(FirestoreCollections.users).doc(uid).get();
+      if (!userSnap.exists) {
+        return { success: false, message: 'User not found in users collection' };
+      }
+      const userData = { uid: userSnap.id, ...userSnap.data() };
+
+      let profileData = null;
+      if (userData.role === 'driver') {
+        const profileSnap = await this.firestore.collection(FirestoreCollections.driverProfiles).doc(uid).get();
+        if (profileSnap.exists) {
+          profileData = { uid: profileSnap.id, ...profileSnap.data() };
+        }
+      } else if (userData.role === 'runner') {
+        const profileSnap = await this.firestore.collection(FirestoreCollections.runnerProfiles).doc(uid).get();
+        if (profileSnap.exists) {
+          profileData = { uid: profileSnap.id, ...profileSnap.data() };
+        }
+      }
+
+      return { success: true, user: userData, profile: profileData };
+    } catch (error: any) {
+      this.logger.error(`Error fetching user profile for ${uid}: ${error.message}`);
+      return { success: false, message: error.message };
+    }
+  }
+
   async getDisputes() {
     if (!this.firebaseConfigured) {
-      return this.mockDisputes;
+      return [];
     }
 
     try {
@@ -107,22 +109,16 @@ export class AdminService {
       snap.forEach((doc: any) => {
         disputes.push({ id: doc.id, ...doc.data() });
       });
-      return disputes.length > 0 ? disputes : this.mockDisputes;
+      return disputes;
     } catch (error: any) {
       this.logger.error(`Error fetching Firestore disputes: ${error.message}`);
-      return this.mockDisputes;
+      return [];
     }
   }
 
   async resolveDispute(id: string, resolution: string) {
     if (!this.firebaseConfigured) {
-      const dispute = this.mockDisputes.find(d => d.id === id);
-      if (dispute) {
-        dispute.status = 'resolved';
-        dispute.resolution = resolution;
-        return { success: true, dispute };
-      }
-      return { success: false, message: 'Dispute not found' };
+      return { success: false, message: 'Firebase not configured' };
     }
 
     try {
@@ -137,7 +133,7 @@ export class AdminService {
 
   async getTags() {
     if (!this.firebaseConfigured) {
-      return this.mockTags;
+      return [];
     }
 
     try {
@@ -146,29 +142,16 @@ export class AdminService {
       snap.forEach((doc: any) => {
         tags.push({ id: doc.id, ...doc.data() });
       });
-      return tags.length > 0 ? tags : this.mockTags;
+      return tags;
     } catch (error: any) {
       this.logger.error(`Error fetching Firestore tags: ${error.message}`);
-      return this.mockTags;
+      return [];
     }
   }
 
   async addOrUpdateTag(tagData: { id?: string; name: string; description: string; active: boolean }) {
     if (!this.firebaseConfigured) {
-      if (tagData.id) {
-        const tag = this.mockTags.find(t => t.id === tagData.id);
-        if (tag) {
-          tag.name = tagData.name;
-          tag.description = tagData.description;
-          tag.active = tagData.active;
-          return { success: true, tag };
-        }
-      } else {
-        const newTag = { id: `tag${this.mockTags.length + 1}`, ...tagData };
-        this.mockTags.push(newTag);
-        return { success: true, tag: newTag };
-      }
-      return { success: false, message: 'Tag not found' };
+      return { success: false, message: 'Firebase not configured' };
     }
 
     try {

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Moon, Sun, Monitor } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import {
@@ -45,16 +45,6 @@ export function ThemeToggle() {
           <Moon className="mr-2 h-3.5 w-3.5" />
           <span>Dark</span>
           {theme === 'dark' && (
-            <div className="ml-auto h-1.5 w-1.5 rounded-full bg-foreground" />
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => setTheme('system')}
-          className="cursor-pointer py-1.5 text-xs"
-        >
-          <Monitor className="mr-2 h-3.5 w-3.5" />
-          <span>System</span>
-          {theme === 'system' && (
             <div className="ml-auto h-1.5 w-1.5 rounded-full bg-foreground" />
           )}
         </DropdownMenuItem>
